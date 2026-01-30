@@ -4,10 +4,6 @@ A stunning scroll-based animation that transforms through four stages: Horizon �
 
 ![Animation Preview](./preview.gif)
 
-## 🎥 Demo Video
-
-<video src="./horizon-animation.webm" controls width="600" poster="./preview.gif"></video>
-
 ## 🌟 Features
 
 - **Smooth Scroll Animation**: Synchronized with scroll position using GSAP ScrollTrigger
