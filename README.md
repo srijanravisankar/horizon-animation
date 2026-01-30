@@ -2,7 +2,7 @@
 
 A stunning scroll-based animation that transforms through four stages: Horizon → Cracks → Waves → DNA Helix.
 
-![Animation Preview](./preview.gif)
+![Animation Preview](./horizontal-animation.mp4)
 
 ## 🌟 Features
 
