@@ -22,9 +22,50 @@
 // Number of vertices used across all stages (must be consistent)
 export const VERTEX_COUNT = 200;
 
-// Animation aspect ratio (horizontal spread)
-export const ANIMATION_WIDTH = 12;
+// Animation dimensions
+// ANIMATION_HEIGHT is fixed, width will be calculated based on viewport
 export const ANIMATION_HEIGHT = 4;
+
+// Default animation width (used if viewport width not provided)
+export const DEFAULT_ANIMATION_WIDTH = 12;
+
+// Store current viewport-aware animation width
+let currentAnimationWidth = DEFAULT_ANIMATION_WIDTH;
+
+/**
+ * Calculate the visible width at a given camera distance
+ * 
+ * For a perspective camera, the visible width at distance z is:
+ * width = 2 * z * tan(fov/2) * aspectRatio
+ * 
+ * @param {number} fov - Camera field of view in degrees
+ * @param {number} cameraZ - Camera distance from origin
+ * @param {number} aspectRatio - Viewport width / height
+ * @returns {number} Visible width at the z=0 plane
+ */
+export function calculateVisibleWidth(fov, cameraZ, aspectRatio) {
+  const fovRad = (fov * Math.PI) / 180;
+  const height = 2 * Math.abs(cameraZ) * Math.tan(fovRad / 2);
+  return height * aspectRatio;
+}
+
+/**
+ * Update the animation width based on viewport dimensions
+ * Call this when viewport changes or on initial setup
+ * 
+ * @param {number} width - New animation width
+ */
+export function setAnimationWidth(width) {
+  currentAnimationWidth = width;
+}
+
+/**
+ * Get the current animation width
+ * @returns {number} Current animation width
+ */
+export function getAnimationWidth() {
+  return currentAnimationWidth;
+}
 
 /**
  * Seeded random number generator for deterministic crack patterns
@@ -111,10 +152,11 @@ export function easeInOutCubic(x) {
  */
 export function generateHorizonPositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
-    // Map index to x position across the width
-    const x = (i / (VERTEX_COUNT - 1)) * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
+    // Map index to x position across the FULL viewport width
+    const x = (i / (VERTEX_COUNT - 1)) * width - width / 2;
     
     // Y position is 0 (centered) with a very subtle sine wave for "living" effect
     const y = Math.sin(x * 0.5 + time * 0.5) * 0.02;
@@ -133,184 +175,113 @@ export function generateHorizonPositions(time = 0) {
 /**
  * Generate vertex positions for the CRACKS stage
  * 
- * Creates a complex fractured line pattern that branches outward from
- * the center horizontal line. The pattern resembles lightning or
- * stress fractures in glass.
+ * Creates CLEAN, ORGANIZED cracks that look like real wall/concrete cracks.
+ * This is a simple, intentional pattern - not chaotic tangles.
  * 
- * CRACK PATTERN ALGORITHM:
- * ========================
+ * CLEAN CRACK PATTERN:
+ * ====================
  * 
- * The pattern is built in layers:
+ * Visual representation (UNIFORMLY distributed across width):
+ *    /        /        /        /        /        /
+ *   ─────────────────────────────────────────────────  (main horizontal line)
+ *       \        \        \        \        \
  * 
- * 1. CENTRAL SPINE (40% of vertices):
- *    - A jagged horizontal line at y≈0
- *    - Has sharp peaks and valleys (not smooth)
- *    - Creates the "fractured center" look
+ * Key features:
+ * - 10 cracks total, evenly distributed across full width
+ * - Alternating up/down pattern
+ * - SMALL crack length (only 0.15 of height)
+ * - Clean, straight lines with minimal curve
+ * - Uniform distribution from left edge to right edge
  * 
- * 2. PRIMARY CRACKS (30% of vertices):
- *    - Major branches extending up/down from the spine
- *    - 6-8 primary cracks distributed across width
- *    - Angles between 30° and 80° from horizontal
- *    - Length varies for visual interest
- * 
- * 3. SECONDARY CRACKS (30% of vertices):
- *    - Smaller branches from primary cracks
- *    - Shorter length, more varied angles
- *    - Creates fractal-like complexity
- * 
- * Visual representation:
- *        ╱     ╲
- *       ╱   ╲   ╲
- *      ╱  ╲  ╲   │
- *   ──╱────╲──╲──┼────
- *     │  ╲   ╲  ╲│  ╱
- *     ╲   ╲   ╲  ╱ ╱
- *      ╲   ╲     ╱
- * 
- * @param {number} time - Current animation time (for subtle movement)
+ * @param {number} time - Current animation time (unused - static cracks)
  * @returns {Float32Array} Array of vertex positions
  */
 export function generateCrackPositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
   
-  // Create seeded random for deterministic pattern
-  const random = createSeededRandom(42);
-  
-  // Vertex allocation
-  const SPINE_VERTICES = Math.floor(VERTEX_COUNT * 0.4);    // 80 vertices
-  const PRIMARY_VERTICES = Math.floor(VERTEX_COUNT * 0.3);  // 60 vertices
-  const SECONDARY_VERTICES = VERTEX_COUNT - SPINE_VERTICES - PRIMARY_VERTICES; // 60 vertices
+  // Vertex allocation - more vertices for main line, fewer for cracks
+  const MAIN_LINE_VERTICES = Math.floor(VERTEX_COUNT * 0.50);  // 100 vertices for main line
+  const CRACK_VERTICES = VERTEX_COUNT - MAIN_LINE_VERTICES;     // 100 vertices for all cracks
   
   let vertexIndex = 0;
   
   // ===========================================
-  // LAYER 1: CENTRAL SPINE (jagged horizontal)
+  // LAYER 1: MAIN HORIZONTAL LINE (clean, almost straight)
   // ===========================================
-  // This creates the fractured center line with sharp peaks
   
-  for (let i = 0; i < SPINE_VERTICES; i++) {
-    const t = i / (SPINE_VERTICES - 1); // 0 to 1
-    const x = t * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
+  for (let i = 0; i < MAIN_LINE_VERTICES; i++) {
+    const t = i / (MAIN_LINE_VERTICES - 1); // 0 to 1
+    const x = t * width - width / 2;
     
-    // Distance from center (for intensity falloff at edges)
-    const centerDist = Math.abs(t - 0.5) * 2; // 0 at center, 1 at edges
-    const intensity = 1 - centerDist * 0.3; // Stronger at center
-    
-    // Create sharp, jagged pattern using multiple frequencies
-    // High frequency = sharp peaks, low frequency = overall shape
-    const noise1 = Math.sin(t * Math.PI * 15 + random() * 2) * 0.3;
-    const noise2 = Math.sin(t * Math.PI * 31 + random() * 3) * 0.15;
-    const noise3 = Math.sin(t * Math.PI * 47 + random() * 5) * 0.08;
-    
-    // Add some randomness for organic feel
-    const randomOffset = (random() - 0.5) * 0.1;
-    
-    // Combine noises with intensity falloff
-    const y = (noise1 + noise2 + noise3 + randomOffset) * intensity * ANIMATION_HEIGHT * 0.25;
-    
-    // Subtle Z depth - fractures "pop" forward at center
-    const z = Math.max(0, (0.5 - centerDist) * 0.3) * Math.sin(t * Math.PI * 8) * 0.2;
+    // VERY subtle variation (almost invisible)
+    const y = Math.sin(t * Math.PI * 2) * 0.005;
     
     positions[vertexIndex * 3] = x;
     positions[vertexIndex * 3 + 1] = y;
-    positions[vertexIndex * 3 + 2] = z;
+    positions[vertexIndex * 3 + 2] = 0;
     vertexIndex++;
   }
   
   // ===========================================
-  // LAYER 2: PRIMARY CRACKS (major branches)
+  // LAYER 2: CRACK BRANCHES (uniformly distributed)
   // ===========================================
-  // These are the main fracture lines extending up and down
+  // Define specific crack zones spread EVENLY across the full width
+  // Format: { xPercent: position along width (0-1), angle: degrees, lengthFactor: relative size }
   
-  const NUM_PRIMARY_CRACKS = 8;
-  const verticesPerPrimaryCrack = Math.floor(PRIMARY_VERTICES / NUM_PRIMARY_CRACKS);
+  const crackZones = [
+    // Left side cracks (0% - 33%)
+    { xPercent: 0.08, angle: 40, lengthFactor: 0.12 },   // far left, up
+    { xPercent: 0.18, angle: -35, lengthFactor: 0.10 },  // left, down
+    { xPercent: 0.28, angle: 45, lengthFactor: 0.11 },   // left-center, up
+    
+    // Center cracks (33% - 66%)
+    { xPercent: 0.40, angle: -40, lengthFactor: 0.12 },  // center-left, down
+    { xPercent: 0.52, angle: 35, lengthFactor: 0.10 },   // center, up
+    { xPercent: 0.62, angle: -45, lengthFactor: 0.11 },  // center-right, down
+    
+    // Right side cracks (66% - 100%)
+    { xPercent: 0.72, angle: 42, lengthFactor: 0.10 },   // right-center, up
+    { xPercent: 0.82, angle: -38, lengthFactor: 0.12 },  // right, down
+    { xPercent: 0.92, angle: 48, lengthFactor: 0.11 },   // far right, up
+  ];
   
-  for (let crackNum = 0; crackNum < NUM_PRIMARY_CRACKS; crackNum++) {
-    // Crack origin point on the spine
-    const originT = (crackNum + 0.5) / NUM_PRIMARY_CRACKS; // Evenly distributed
-    const originX = originT * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
-    const originY = 0; // Start from center line
+  const NUM_CRACKS = crackZones.length;
+  const verticesPerCrack = Math.floor(CRACK_VERTICES / NUM_CRACKS);
+  
+  for (let crackNum = 0; crackNum < NUM_CRACKS; crackNum++) {
+    const zone = crackZones[crackNum];
     
-    // Crack direction and properties
-    const goesUp = crackNum % 2 === 0; // Alternate up/down
-    const baseAngle = goesUp ? Math.PI / 2 : -Math.PI / 2; // 90° or -90°
-    const angleVariation = (random() - 0.5) * Math.PI * 0.5; // ±45° variation
-    const angle = baseAngle + angleVariation;
+    // Calculate origin position
+    const originX = zone.xPercent * width - width / 2;
+    const originY = 0;
     
-    // Crack length (varies for visual interest)
-    const length = (0.5 + random() * 0.8) * ANIMATION_HEIGHT * 0.5;
+    // Convert angle to radians
+    const angleRad = (zone.angle * Math.PI) / 180;
     
-    // Generate vertices along this crack
-    for (let i = 0; i < verticesPerPrimaryCrack; i++) {
-      const t = i / (verticesPerPrimaryCrack - 1); // 0 to 1 along crack
+    // Crack length - SMALL! Only 10-12% of ANIMATION_HEIGHT
+    const crackLength = ANIMATION_HEIGHT * zone.lengthFactor;
+    
+    for (let i = 0; i < verticesPerCrack; i++) {
+      const t = i / (verticesPerCrack - 1); // 0 to 1 along crack
       
-      // Base position along crack
-      let x = originX + Math.cos(angle) * length * t;
-      let y = originY + Math.sin(angle) * length * t;
-      
-      // Add jaggedness (cracks aren't perfectly straight)
-      const jaggedness = (random() - 0.5) * 0.15 * (1 - t * 0.5); // Less jagged at tips
-      x += jaggedness;
-      y += jaggedness * 0.5;
-      
-      // Subtle Z for depth
-      const z = (random() - 0.5) * 0.1;
+      // Straight line from origin
+      const x = originX + Math.cos(angleRad) * crackLength * t;
+      const y = originY + Math.sin(angleRad) * crackLength * t;
       
       positions[vertexIndex * 3] = x;
       positions[vertexIndex * 3 + 1] = y;
-      positions[vertexIndex * 3 + 2] = z;
+      positions[vertexIndex * 3 + 2] = 0;
       vertexIndex++;
     }
   }
   
-  // ===========================================
-  // LAYER 3: SECONDARY CRACKS (sub-branches)
-  // ===========================================
-  // Smaller cracks branching from primary cracks
-  
-  const NUM_SECONDARY_CRACKS = 12;
-  const verticesPerSecondaryCrack = Math.floor(SECONDARY_VERTICES / NUM_SECONDARY_CRACKS);
-  
-  for (let crackNum = 0; crackNum < NUM_SECONDARY_CRACKS; crackNum++) {
-    // Secondary cracks branch from various points
-    const originT = random(); // Random position along width
-    const originX = originT * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
-    
-    // Start from slightly off-center (branching from primary cracks)
-    const originY = (random() - 0.5) * ANIMATION_HEIGHT * 0.3;
-    
-    // More varied angles for secondary cracks
-    const angle = (random() - 0.5) * Math.PI * 1.2; // ±108° from horizontal
-    
-    // Shorter length than primary cracks
-    const length = (0.2 + random() * 0.4) * ANIMATION_HEIGHT * 0.4;
-    
-    for (let i = 0; i < verticesPerSecondaryCrack; i++) {
-      const t = i / (verticesPerSecondaryCrack - 1);
-      
-      // Position along crack with more jaggedness
-      let x = originX + Math.cos(angle) * length * t;
-      let y = originY + Math.sin(angle) * length * t;
-      
-      // More jagged for secondary cracks
-      const jaggedness = (random() - 0.5) * 0.2;
-      x += jaggedness;
-      y += jaggedness;
-      
-      const z = (random() - 0.5) * 0.05;
-      
-      positions[vertexIndex * 3] = x;
-      positions[vertexIndex * 3 + 1] = y;
-      positions[vertexIndex * 3 + 2] = z;
-      vertexIndex++;
-    }
-  }
-  
-  // Fill any remaining vertices (edge case handling)
+  // Fill any remaining vertices along the main line
   while (vertexIndex < VERTEX_COUNT) {
     const t = vertexIndex / VERTEX_COUNT;
-    positions[vertexIndex * 3] = t * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
-    positions[vertexIndex * 3 + 1] = (random() - 0.5) * ANIMATION_HEIGHT * 0.2;
+    const x = t * width - width / 2;
+    positions[vertexIndex * 3] = x;
+    positions[vertexIndex * 3 + 1] = 0;
     positions[vertexIndex * 3 + 2] = 0;
     vertexIndex++;
   }
@@ -324,40 +295,52 @@ export function generateCrackPositions(time = 0) {
  * Creates an oscillating waveform pattern like an audio visualizer.
  * The wave continuously animates based on the time parameter.
  * 
+ * IMPROVED WAVE PATTERN:
+ * ======================
+ * - Full viewport width coverage (edge to edge)
+ * - 10-12 wave peaks visible (higher frequency)
+ * - Smaller amplitude (more refined look)
+ * - Complex waveform with multiple harmonics
+ * 
  * Visual representation:
- *     ╱╲    ╱╲    ╱╲
- *    ╱  ╲  ╱  ╲  ╱  ╲
- * ──╱────╲╱────╲╱────╲──
- *   ╲    ╱╲    ╱╲    ╱
- *    ╲  ╱  ╲  ╱  ╲  ╱
+ *  ∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
  * 
  * @param {number} time - Current animation time (drives wave motion)
  * @returns {Float32Array} Array of vertex positions
  */
 export function generateWavePositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
+  
+  // Wave parameters - refined for more instances
+  const waveFrequency = 10; // Number of complete waves visible (was ~4)
+  const baseAmplitude = ANIMATION_HEIGHT * 0.18; // Smaller amplitude (was 0.35)
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
-    const x = (i / (VERTEX_COUNT - 1)) * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
+    // Full width coverage from left edge to right edge
+    const t = i / (VERTEX_COUNT - 1); // 0 to 1
+    const x = t * width - width / 2;
     
-    // Normalized position (0 to 1)
-    const t = i / (VERTEX_COUNT - 1);
+    // Multiple wave frequencies for complex waveform (audio visualizer look)
+    // Primary wave (dominant)
+    const wave1 = Math.sin(t * Math.PI * 2 * waveFrequency + time * 2.5) * 0.6;
     
-    // Multiple frequencies create more complex waveform
-    // Primary wave
-    const wave1 = Math.sin(t * Math.PI * 8 + time * 2) * 0.5;
-    // Secondary wave (faster, smaller)
-    const wave2 = Math.sin(t * Math.PI * 16 + time * 3) * 0.25;
-    // Tertiary wave (fastest, smallest - adds detail)
-    const wave3 = Math.sin(t * Math.PI * 32 + time * 4) * 0.1;
+    // Secondary wave (faster, adds detail)
+    const wave2 = Math.sin(t * Math.PI * 2 * waveFrequency * 2 + time * 3.5) * 0.25;
     
-    // Envelope: reduce amplitude at edges for cleaner look
-    const envelope = Math.sin(t * Math.PI);
+    // Tertiary wave (even faster, subtle harmonics)
+    const wave3 = Math.sin(t * Math.PI * 2 * waveFrequency * 3 + time * 4.5) * 0.1;
     
-    const y = (wave1 + wave2 + wave3) * envelope * ANIMATION_HEIGHT * 0.35;
+    // Quaternary wave (highest frequency, micro-detail)
+    const wave4 = Math.sin(t * Math.PI * 2 * waveFrequency * 5 + time * 5) * 0.05;
     
-    // Z creates subtle depth variation
-    const z = Math.sin(t * Math.PI * 4 + time) * 0.2;
+    // Combine waves with envelope (smoother at edges, but less aggressive falloff)
+    const envelope = 0.3 + 0.7 * Math.sin(t * Math.PI); // Never goes below 0.3
+    
+    const y = (wave1 + wave2 + wave3 + wave4) * envelope * baseAmplitude;
+    
+    // Z creates subtle depth variation - follows wave pattern
+    const z = Math.sin(t * Math.PI * waveFrequency + time * 1.5) * 0.15;
     
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
@@ -373,34 +356,34 @@ export function generateWavePositions(time = 0) {
  * Creates a rotating double helix structure. The helix continuously
  * rotates based on the time parameter, creating the iconic DNA spin.
  * 
- * Visual representation (side view):
- *    ╭─────╮   ╭─────╮
- *   ╱       ╲ ╱       ╲
- *  ╱    ╳    ╳    ╳    ╲
- *  ╲       ╱ ╲       ╱
- *   ╲─────╯   ╲─────╯
+ * HELIX STRUCTURE:
+ * ================
+ * - Two intertwining strands (the classic DNA double helix)
+ * - Full viewport width coverage
+ * - 8 complete rotations visible
  * 
- * The helix is formed by two intertwining sine waves offset by π.
- * We alternate vertices between the two strands to create the
- * illusion of intertwining strands with a single line.
+ * Visual representation (side view):
+ *  ╭─╮ ╭─╮ ╭─╮ ╭─╮ ╭─╮ ╭─╮ ╭─╮ ╭─╮
+ *  ╰─╯ ╰─╯ ╰─╯ ╰─╯ ╰─╯ ╰─╯ ╰─╯ ╰─╯
  * 
  * @param {number} time - Current animation time (drives rotation)
  * @returns {Float32Array} Array of vertex positions
  */
 export function generateDNAHelixPositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
   
   // Helix parameters
-  const rotationsVisible = 2.5; // Number of full rotations visible
-  const helixRadius = 0.8; // Radius of the helix
-  const rotationSpeed = 1.5; // How fast the helix rotates
+  const rotationsVisible = 8; // Number of full rotations
+  const helixRadius = 0.45; // Vertical amplitude of helix
+  const rotationSpeed = 1.2; // Rotation speed
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
     // Progress along the helix (0 to 1)
     const t = i / (VERTEX_COUNT - 1);
     
-    // X position spans the width
-    const x = t * ANIMATION_WIDTH - ANIMATION_WIDTH / 2;
+    // X position spans the full width
+    const x = t * width - width / 2;
     
     // Angle along the helix (includes rotation over time)
     const angle = t * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
@@ -413,7 +396,7 @@ export function generateDNAHelixPositions(time = 0) {
     const y = Math.sin(angle + strandOffset) * helixRadius;
     
     // Z position follows cosine wave (creates depth, the 3D effect)
-    const z = Math.cos(angle + strandOffset) * helixRadius * 0.5;
+    const z = Math.cos(angle + strandOffset) * helixRadius * 0.4;
     
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
@@ -554,4 +537,78 @@ export function getStageNumber(scrollProgress) {
   if (scrollProgress <= 0.50) return 2;
   if (scrollProgress <= 0.75) return 3;
   return 4;
+}
+
+/**
+ * Generate vertex colors with CENTER GLOW EFFECT
+ * 
+ * Creates a color array where vertices near the center (x ≈ 0) are brighter
+ * and vertices near the edges are dimmer. This creates a "spotlight" effect
+ * that matches the reference image aesthetic.
+ * 
+ * GLOW FALLOFF:
+ * =============
+ * - Center (x = 0): Maximum brightness (1.0)
+ * - Edges (x = ±width/2): Base brightness (0.4)
+ * - Smooth cosine falloff between them
+ * 
+ * The color is a gradient from bright cyan (center) to dimmer blue (edges):
+ * - Center: rgb(0.3, 1.0, 1.0) - bright cyan
+ * - Edge: rgb(0.0, 0.5, 0.8) - dimmer blue
+ * 
+ * @param {Float32Array} positions - Vertex positions array [x,y,z, x,y,z, ...]
+ * @param {number} scrollProgress - Current scroll progress (unused, kept for API compatibility)
+ * @returns {Float32Array} Color array [r,g,b, r,g,b, ...] for each vertex
+ */
+export function generateVertexColors(positions, scrollProgress = 1) {
+  const numVertices = positions.length / 3;
+  const colors = new Float32Array(numVertices * 3); // RGB for each vertex
+  
+  // Color palette
+  const centerColor = { r: 0.3, g: 1.0, b: 1.0 };   // Bright cyan at center
+  const edgeColor = { r: 0.0, g: 0.5, b: 0.8 };     // Dimmer blue at edges
+  
+  // Half width for normalization - use dynamic width
+  const halfWidth = currentAnimationWidth / 2;
+  
+  for (let i = 0; i < numVertices; i++) {
+    const x = positions[i * 3]; // Get x position of this vertex
+    
+    // Calculate normalized distance from center (0 at center, 1 at edges)
+    const distFromCenter = Math.abs(x) / halfWidth;
+    const normalizedDist = Math.min(1, distFromCenter); // Clamp to 0-1
+    
+    // Use cosine falloff for smooth, natural-looking gradient
+    const glowIntensity = Math.cos(normalizedDist * Math.PI / 2);
+    
+    // Boost the center intensity for extra glow
+    const boostedIntensity = 0.4 + glowIntensity * 0.6; // Range: 0.4 to 1.0
+    
+    // Interpolate between edge color and center color
+    const r = edgeColor.r + (centerColor.r - edgeColor.r) * boostedIntensity;
+    const g = edgeColor.g + (centerColor.g - edgeColor.g) * boostedIntensity;
+    const b = edgeColor.b + (centerColor.b - edgeColor.b) * boostedIntensity;
+    
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = g;
+    colors[i * 3 + 2] = b;
+  }
+  
+  return colors;
+}
+
+/**
+ * Get the glow intensity multiplier for a given x position
+ * 
+ * Utility function for other components that need center glow calculation.
+ * Returns a value from 0.4 (edges) to 1.0 (center).
+ * 
+ * @param {number} x - X position
+ * @returns {number} Glow intensity (0.4 to 1.0)
+ */
+export function getGlowIntensityAtX(x) {
+  const halfWidth = currentAnimationWidth / 2;
+  const normalizedDist = Math.min(1, Math.abs(x) / halfWidth);
+  const glowIntensity = Math.cos(normalizedDist * Math.PI / 2);
+  return 0.4 + glowIntensity * 0.6;
 }

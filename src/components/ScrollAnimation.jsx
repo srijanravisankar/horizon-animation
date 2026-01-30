@@ -39,8 +39,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 import { 
   generateVertexPositions, 
+  generateVertexColors,
   getStageName, 
-  VERTEX_COUNT 
+  VERTEX_COUNT,
+  calculateVisibleWidth,
+  setAnimationWidth 
 } from '../utils/vertexPositions';
 
 /**
@@ -128,7 +131,7 @@ function GlowLine({ positions, color, opacity = 1, additive = false }) {
 }
 
 /**
- * AnimatedLine Component - ENHANCED WITH MULTI-LAYER GLOW
+ * AnimatedLine Component - ENHANCED WITH MULTI-LAYER GLOW & CENTER BRIGHTNESS
  * 
  * The core 3D element that displays the morphing line geometry.
  * Now includes multiple layers for a realistic glow effect:
@@ -136,7 +139,11 @@ function GlowLine({ positions, color, opacity = 1, additive = false }) {
  * LAYER STRUCTURE (back to front):
  * 1. Outer glow layer (thickest, lowest opacity, additive)
  * 2. Inner glow layer (medium thickness, medium opacity, additive)
- * 3. Core line (thin, full opacity)
+ * 3. Core line (thin, full opacity, WITH VERTEX COLORS for center glow)
+ * 
+ * CENTER GLOW EFFECT:
+ * The core line uses per-vertex colors that are brighter at the center
+ * (x ≈ 0) and dimmer at the edges. This creates a "spotlight" effect.
  * 
  * All layers share the same vertex positions and animate together.
  * The additive blending causes light to accumulate where layers overlap,
@@ -160,10 +167,20 @@ function AnimatedLine({ scrollProgress, debug = false }) {
   }, []);
   
   /**
+   * Create initial vertex colors (center glow effect)
+   */
+  const initialColors = useMemo(() => {
+    return generateVertexColors(initialPositions);
+  }, [initialPositions]);
+  
+  /**
    * Animation frame update - Updates all glow layers simultaneously
    * 
    * All three layers (core, inner glow, outer glow) receive the same
    * vertex positions, ensuring they animate together as one unit.
+   * 
+   * The core layer also receives updated vertex colors for the
+   * center glow effect.
    */
   useFrame((state, delta) => {
     // Skip if geometries aren't ready
@@ -175,6 +192,9 @@ function AnimatedLine({ scrollProgress, debug = false }) {
     // Generate new positions based on current scroll and time
     const newPositions = generateVertexPositions(scrollProgress.current, timeRef.current);
     
+    // Generate new vertex colors for center glow effect AND border fade-in
+    const newColors = generateVertexColors(newPositions, scrollProgress.current);
+    
     // Update all geometry layers with the same positions
     const geometries = [
       coreGeometryRef.current,
@@ -182,7 +202,7 @@ function AnimatedLine({ scrollProgress, debug = false }) {
       outerGlowGeometryRef.current,
     ];
     
-    geometries.forEach(geometry => {
+    geometries.forEach((geometry, index) => {
       if (!geometry) return;
       
       const positionAttribute = geometry.attributes.position;
@@ -194,6 +214,16 @@ function AnimatedLine({ scrollProgress, debug = false }) {
       
       // Mark for GPU update
       positionAttribute.needsUpdate = true;
+      
+      // Update vertex colors for the core line (index 0 is outer, 1 is inner, 2 is core)
+      // Actually: coreGeometryRef is index 0 in our geometries array after reordering
+      if (geometry === coreGeometryRef.current && geometry.attributes.color) {
+        const colorAttribute = geometry.attributes.color;
+        for (let i = 0; i < newColors.length; i++) {
+          colorAttribute.array[i] = newColors[i];
+        }
+        colorAttribute.needsUpdate = true;
+      }
     });
   });
   
@@ -261,10 +291,15 @@ function AnimatedLine({ scrollProgress, debug = false }) {
       {/* 
         LAYER 3: CORE LINE (rendered last, on top)
         
-        The bright, sharp core of the line.
+        The bright, sharp core of the line WITH CENTER GLOW.
         - Full opacity for maximum brightness
         - toneMapped=false ensures it stays bright for bloom
+        - vertexColors=true enables per-vertex color for center glow effect
         - This is the "anchor" that defines the line shape
+        
+        CENTER GLOW: The color attribute varies brightness based on X position:
+        - Center (x=0): Maximum brightness (bright cyan)
+        - Edges (x=±width/2): Dimmer (softer blue)
       */}
       <line renderOrder={3}>
         <bufferGeometry ref={coreGeometryRef}>
@@ -275,9 +310,16 @@ function AnimatedLine({ scrollProgress, debug = false }) {
             itemSize={3}
             usage={THREE.DynamicDrawUsage}
           />
+          <bufferAttribute
+            attach="attributes-color"
+            count={VERTEX_COUNT}
+            array={initialColors}
+            itemSize={3}
+            usage={THREE.DynamicDrawUsage}
+          />
         </bufferGeometry>
         <lineBasicMaterial
-          color={GLOW_COLORS.core}
+          vertexColors={true}
           toneMapped={false}
         />
       </line>
@@ -382,7 +424,26 @@ function BackgroundParticles({ count = 100 }) {
  * the ethereal, camera-like light bleed effect.
  */
 function Scene({ scrollProgress, debug }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, size } = useThree();
+  
+  // Calculate and set the visible width based on camera perspective
+  // This ensures geometry spans the full viewport width
+  useEffect(() => {
+    const fov = camera.fov || 50;
+    const cameraZ = camera.position.z || 8;
+    const aspectRatio = size.width / size.height;
+    
+    // Calculate visible width at z=0 plane
+    const visibleWidth = calculateVisibleWidth(fov, cameraZ, aspectRatio);
+    
+    // Add a small margin (5%) to ensure line extends slightly beyond edges
+    const widthWithMargin = visibleWidth * 1.05;
+    
+    // Set the animation width for vertex generation
+    setAnimationWidth(widthWithMargin);
+    
+    console.log(`[ViewportWidth] FOV: ${fov}°, Z: ${cameraZ}, Aspect: ${aspectRatio.toFixed(2)}, Visible Width: ${visibleWidth.toFixed(2)}, With Margin: ${widthWithMargin.toFixed(2)}`);
+  }, [camera, size]);
   
   // Position camera and configure renderer for optimal glow
   useEffect(() => {
