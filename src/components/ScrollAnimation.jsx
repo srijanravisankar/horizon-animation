@@ -40,6 +40,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { 
   generateVertexPositions, 
   generateVertexColors,
+  generateGlowColors,
   getStageName, 
   VERTEX_COUNT,
   calculateVisibleWidth,
@@ -82,11 +83,11 @@ const GLOW_COLORS = {
   outerGlow: '#0099FF',  // More blue for outer glow
 };
 
-// Bloom configuration for the postprocessing pass
+// Bloom configuration for the postprocessing pass - EXTRA INTENSE GLOW
 const BLOOM_CONFIG = {
   luminanceThreshold: 0,    // Allow all bright pixels to bloom (0 = no threshold)
-  luminanceSmoothing: 0.4,  // Smooth transition into bloom
-  intensity: 2.5,           // Strong bloom intensity
+  luminanceSmoothing: 0.3,  // Smooth transition into bloom
+  intensity: 3.5,           // EXTRA strong bloom intensity for neon effect
   mipmapBlur: true,         // Better quality blur
 };
 
@@ -174,6 +175,17 @@ function AnimatedLine({ scrollProgress, debug = false }) {
   }, [initialPositions]);
   
   /**
+   * Create initial colors for glow layers
+   */
+  const initialInnerGlowColors = useMemo(() => {
+    return generateGlowColors(initialPositions, 'inner');
+  }, [initialPositions]);
+  
+  const initialOuterGlowColors = useMemo(() => {
+    return generateGlowColors(initialPositions, 'outer');
+  }, [initialPositions]);
+  
+  /**
    * Animation frame update - Updates all glow layers simultaneously
    * 
    * All three layers (core, inner glow, outer glow) receive the same
@@ -192,8 +204,10 @@ function AnimatedLine({ scrollProgress, debug = false }) {
     // Generate new positions based on current scroll and time
     const newPositions = generateVertexPositions(scrollProgress.current, timeRef.current);
     
-    // Generate new vertex colors for center glow effect AND border fade-in
+    // Generate new vertex colors for center glow effect
     const newColors = generateVertexColors(newPositions, scrollProgress.current);
+    const newInnerGlowColors = generateGlowColors(newPositions, 'inner');
+    const newOuterGlowColors = generateGlowColors(newPositions, 'outer');
     
     // Update all geometry layers with the same positions
     const geometries = [
@@ -215,12 +229,21 @@ function AnimatedLine({ scrollProgress, debug = false }) {
       // Mark for GPU update
       positionAttribute.needsUpdate = true;
       
-      // Update vertex colors for the core line (index 0 is outer, 1 is inner, 2 is core)
-      // Actually: coreGeometryRef is index 0 in our geometries array after reordering
-      if (geometry === coreGeometryRef.current && geometry.attributes.color) {
+      // Update vertex colors for each layer
+      if (geometry.attributes.color) {
         const colorAttribute = geometry.attributes.color;
-        for (let i = 0; i < newColors.length; i++) {
-          colorAttribute.array[i] = newColors[i];
+        let newLayerColors;
+        
+        if (geometry === coreGeometryRef.current) {
+          newLayerColors = newColors;
+        } else if (geometry === innerGlowGeometryRef.current) {
+          newLayerColors = newInnerGlowColors;
+        } else {
+          newLayerColors = newOuterGlowColors;
+        }
+        
+        for (let i = 0; i < newLayerColors.length; i++) {
+          colorAttribute.array[i] = newLayerColors[i];
         }
         colorAttribute.needsUpdate = true;
       }
@@ -233,12 +256,9 @@ function AnimatedLine({ scrollProgress, debug = false }) {
         LAYER 1: OUTER GLOW (rendered first, furthest back)
         
         This is the outermost, most diffuse glow layer.
-        - Very low opacity (0.15) for subtle effect
+        - Uses vertex colors for center-concentrated glow
         - Additive blending makes it accumulate light
-        - Creates the extended halo around the line
-        
-        Note: Even though linewidth doesn't work in WebGL2,
-        the bloom postprocessing will spread this layer's light.
+        - Creates the extended halo around the line (brighter at center)
       */}
       <line renderOrder={1}>
         <bufferGeometry ref={outerGlowGeometryRef}>
@@ -249,11 +269,18 @@ function AnimatedLine({ scrollProgress, debug = false }) {
             itemSize={3}
             usage={THREE.DynamicDrawUsage}
           />
+          <bufferAttribute
+            attach="attributes-color"
+            count={VERTEX_COUNT}
+            array={initialOuterGlowColors}
+            itemSize={3}
+            usage={THREE.DynamicDrawUsage}
+          />
         </bufferGeometry>
         <lineBasicMaterial
-          color={GLOW_COLORS.outerGlow}
+          vertexColors={true}
           transparent={true}
-          opacity={0.2}
+          opacity={0.4}
           blending={THREE.AdditiveBlending}
           toneMapped={false}
           depthWrite={false}
@@ -264,9 +291,9 @@ function AnimatedLine({ scrollProgress, debug = false }) {
         LAYER 2: INNER GLOW (middle layer)
         
         Creates the immediate glow around the core line.
-        - Medium opacity (0.4) for visible but soft glow
+        - Uses vertex colors for center-concentrated glow
         - Additive blending adds to the outer glow
-        - Positioned at same location as core
+        - Brighter at center, dims toward edges
       */}
       <line renderOrder={2}>
         <bufferGeometry ref={innerGlowGeometryRef}>
@@ -277,9 +304,16 @@ function AnimatedLine({ scrollProgress, debug = false }) {
             itemSize={3}
             usage={THREE.DynamicDrawUsage}
           />
+          <bufferAttribute
+            attach="attributes-color"
+            count={VERTEX_COUNT}
+            array={initialInnerGlowColors}
+            itemSize={3}
+            usage={THREE.DynamicDrawUsage}
+          />
         </bufferGeometry>
         <lineBasicMaterial
-          color={GLOW_COLORS.innerGlow}
+          vertexColors={true}
           transparent={true}
           opacity={0.5}
           blending={THREE.AdditiveBlending}

@@ -158,8 +158,9 @@ export function generateHorizonPositions(time = 0) {
     // Map index to x position across the FULL viewport width
     const x = (i / (VERTEX_COUNT - 1)) * width - width / 2;
     
-    // Y position is 0 (centered) with a very subtle sine wave for "living" effect
-    const y = Math.sin(x * 0.5 + time * 0.5) * 0.02;
+    // Y position is exactly 0 (perfectly horizontal, no variation)
+    // This creates a clean, crisp line without any waviness
+    const y = 0;
     
     // Z is 0 (flat on the plane)
     const z = 0;
@@ -540,21 +541,21 @@ export function getStageNumber(scrollProgress) {
 }
 
 /**
- * Generate vertex colors with CENTER GLOW EFFECT
+ * Generate vertex colors with ENHANCED CENTER GLOW EFFECT
  * 
- * Creates a color array where vertices near the center (x ≈ 0) are brighter
- * and vertices near the edges are dimmer. This creates a "spotlight" effect
+ * Creates a color array where vertices near the center (x ≈ 0) are MUCH brighter
+ * and vertices near the edges are dimmer. This creates a strong "spotlight" effect
  * that matches the reference image aesthetic.
  * 
- * GLOW FALLOFF:
- * =============
- * - Center (x = 0): Maximum brightness (1.0)
- * - Edges (x = ±width/2): Base brightness (0.4)
- * - Smooth cosine falloff between them
+ * ENHANCED GLOW FALLOFF:
+ * ======================
+ * - Center (x = 0): Maximum brightness (1.0) - bright white-cyan
+ * - Edges (x = ±width/2): Base brightness - dim blue
+ * - Sharp cubic falloff for very pronounced "hot spot" effect at center
  * 
- * The color is a gradient from bright cyan (center) to dimmer blue (edges):
- * - Center: rgb(0.3, 1.0, 1.0) - bright cyan
- * - Edge: rgb(0.0, 0.5, 0.8) - dimmer blue
+ * The color is a gradient from bright white-cyan (center) to dim blue (edges):
+ * - Center: rgb(0.9, 1.0, 1.0) - almost white at the very center
+ * - Edge: rgb(0.0, 0.2, 0.5) - dim blue
  * 
  * @param {Float32Array} positions - Vertex positions array [x,y,z, x,y,z, ...]
  * @param {number} scrollProgress - Current scroll progress (unused, kept for API compatibility)
@@ -564,12 +565,15 @@ export function generateVertexColors(positions, scrollProgress = 1) {
   const numVertices = positions.length / 3;
   const colors = new Float32Array(numVertices * 3); // RGB for each vertex
   
-  // Color palette
-  const centerColor = { r: 0.3, g: 1.0, b: 1.0 };   // Bright cyan at center
-  const edgeColor = { r: 0.0, g: 0.5, b: 0.8 };     // Dimmer blue at edges
+  // Color palette - INTENSE NEON BLUE throughout with brighter center
+  const centerColor = { r: 0.2, g: 1.0, b: 1.0 };   // Super bright cyan at center
+  const edgeColor = { r: 0.0, g: 0.6, b: 1.0 };     // Bright neon blue at edges (still bright!)
   
   // Half width for normalization - use dynamic width
   const halfWidth = currentAnimationWidth / 2;
+  
+  // Wider hot zone so more of the line is bright
+  const hotZoneRadius = 0.4; // Center 40% of each side is "hot"
   
   for (let i = 0; i < numVertices; i++) {
     const x = positions[i * 3]; // Get x position of this vertex
@@ -578,20 +582,65 @@ export function generateVertexColors(positions, scrollProgress = 1) {
     const distFromCenter = Math.abs(x) / halfWidth;
     const normalizedDist = Math.min(1, distFromCenter); // Clamp to 0-1
     
-    // Use cosine falloff for smooth, natural-looking gradient
-    const glowIntensity = Math.cos(normalizedDist * Math.PI / 2);
+    // Use quadratic falloff - gentler than cubic for wider bright area
+    const falloff = 1 - Math.pow(normalizedDist / hotZoneRadius, 2);
+    const clampedFalloff = Math.max(0, Math.min(1, falloff));
     
-    // Boost the center intensity for extra glow
-    const boostedIntensity = 0.4 + glowIntensity * 0.6; // Range: 0.4 to 1.0
+    // HIGH minimum intensity - edges are still bright blue
+    // Range: 0.7 at edges to 1.0 at center
+    const glowIntensity = 0.7 + clampedFalloff * 0.3;
     
     // Interpolate between edge color and center color
-    const r = edgeColor.r + (centerColor.r - edgeColor.r) * boostedIntensity;
-    const g = edgeColor.g + (centerColor.g - edgeColor.g) * boostedIntensity;
-    const b = edgeColor.b + (centerColor.b - edgeColor.b) * boostedIntensity;
+    const r = edgeColor.r + (centerColor.r - edgeColor.r) * glowIntensity;
+    const g = edgeColor.g + (centerColor.g - edgeColor.g) * glowIntensity;
+    const b = edgeColor.b + (centerColor.b - edgeColor.b) * glowIntensity;
     
     colors[i * 3] = r;
     colors[i * 3 + 1] = g;
     colors[i * 3 + 2] = b;
+  }
+  
+  return colors;
+}
+
+/**
+ * Generate per-vertex colors for glow layers (inner/outer glow)
+ * 
+ * Similar to generateVertexColors but optimized for the glow layers.
+ * Uses the same center-bright falloff so glow is more intense at center.
+ * 
+ * @param {Float32Array} positions - Vertex positions array
+ * @param {string} layer - 'inner' or 'outer' glow layer
+ * @returns {Float32Array} Color array with alpha embedded in brightness
+ */
+export function generateGlowColors(positions, layer = 'inner') {
+  const numVertices = positions.length / 3;
+  const colors = new Float32Array(numVertices * 3);
+  
+  // Base colors for glow layers - INTENSE NEON BLUE
+  const innerColor = { r: 0.1, g: 0.9, b: 1.0 };    // Super bright cyan for inner glow
+  const outerColor = { r: 0.0, g: 0.7, b: 1.0 };    // Bright electric blue for outer glow
+  const baseColor = layer === 'inner' ? innerColor : outerColor;
+  
+  const halfWidth = currentAnimationWidth / 2;
+  const hotZoneRadius = 0.5; // Wide hot zone
+  
+  for (let i = 0; i < numVertices; i++) {
+    const x = positions[i * 3];
+    const distFromCenter = Math.abs(x) / halfWidth;
+    const normalizedDist = Math.min(1, distFromCenter);
+    
+    // Gentler quadratic falloff
+    const falloff = 1 - Math.pow(normalizedDist / hotZoneRadius, 2);
+    const clampedFalloff = Math.max(0, Math.min(1, falloff));
+    
+    // HIGH minimum intensity - whole line glows bright
+    // Range: 0.6 at edges to 1.0 at center
+    const intensity = 0.6 + clampedFalloff * 0.4;
+    
+    colors[i * 3] = baseColor.r * intensity;
+    colors[i * 3 + 1] = baseColor.g * intensity;
+    colors[i * 3 + 2] = baseColor.b * intensity;
   }
   
   return colors;
@@ -609,6 +658,7 @@ export function generateVertexColors(positions, scrollProgress = 1) {
 export function getGlowIntensityAtX(x) {
   const halfWidth = currentAnimationWidth / 2;
   const normalizedDist = Math.min(1, Math.abs(x) / halfWidth);
-  const glowIntensity = Math.cos(normalizedDist * Math.PI / 2);
-  return 0.4 + glowIntensity * 0.6;
+  // Use quadratic falloff to match generateVertexColors
+  const quadraticFalloff = 1 - (normalizedDist * normalizedDist);
+  return 0.2 + quadraticFalloff * 0.8;
 }
