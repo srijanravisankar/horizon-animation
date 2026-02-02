@@ -274,7 +274,7 @@ function AnimatedLine({ scrollProgress, debug = false }) {
         posAttr.array[i] = strand1Positions[i];
       }
       posAttr.needsUpdate = true;
-      dnaStrand1Ref.current.material.opacity = dnaOpacity * 0.6;
+      dnaStrand1Ref.current.material.opacity = dnaOpacity;
       dnaStrand1Ref.current.visible = isDNAStage;
     }
     
@@ -286,7 +286,7 @@ function AnimatedLine({ scrollProgress, debug = false }) {
         posAttr.array[i] = strand2Positions[i];
       }
       posAttr.needsUpdate = true;
-      dnaStrand2Ref.current.material.opacity = dnaOpacity * 0.6;
+      dnaStrand2Ref.current.material.opacity = dnaOpacity;
       dnaStrand2Ref.current.visible = isDNAStage;
     }
     
@@ -447,10 +447,9 @@ function AnimatedLine({ scrollProgress, debug = false }) {
           />
         </bufferGeometry>
         <lineBasicMaterial
-          color="#00EEFF"
+          color="#00DDFF"
           transparent={true}
           opacity={0}
-          blending={THREE.AdditiveBlending}
           toneMapped={false}
           depthWrite={false}
         />
@@ -473,10 +472,9 @@ function AnimatedLine({ scrollProgress, debug = false }) {
           />
         </bufferGeometry>
         <lineBasicMaterial
-          color="#00CCFF"
+          color="#00DDFF"
           transparent={true}
           opacity={0}
-          blending={THREE.AdditiveBlending}
           toneMapped={false}
           depthWrite={false}
         />
