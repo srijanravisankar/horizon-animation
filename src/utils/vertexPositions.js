@@ -176,115 +176,55 @@ export function generateHorizonPositions(time = 0) {
 /**
  * Generate vertex positions for the CRACKS stage
  * 
- * Creates CLEAN, ORGANIZED cracks that look like real wall/concrete cracks.
- * This is a simple, intentional pattern - not chaotic tangles.
+ * Creates REALISTIC WALL CRACKS - like cracks in concrete/plaster.
  * 
- * CLEAN CRACK PATTERN:
- * ====================
+ * KEY TECHNIQUE: Random walk algorithm - each vertex moves randomly from previous.
+ * This guarantees NO straight segments anywhere.
  * 
- * Visual representation (UNIFORMLY distributed across width):
- *    /        /        /        /        /        /
- *   ─────────────────────────────────────────────────  (main horizontal line)
- *       \        \        \        \        \
- * 
- * Key features:
- * - 10 cracks total, evenly distributed across full width
- * - Alternating up/down pattern
- * - SMALL crack length (only 0.15 of height)
- * - Clean, straight lines with minimal curve
- * - Uniform distribution from left edge to right edge
+ * Reference: Real wall crack - rough, jagged texture, no straight lines
  * 
  * @param {number} time - Current animation time (unused - static cracks)
  * @returns {Float32Array} Array of vertex positions
  */
 export function generateCrackPositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
-  const width = currentAnimationWidth;
   
-  // Vertex allocation - more vertices for main line, fewer for cracks
-  const MAIN_LINE_VERTICES = Math.floor(VERTEX_COUNT * 0.50);  // 100 vertices for main line
-  const CRACK_VERTICES = VERTEX_COUNT - MAIN_LINE_VERTICES;     // 100 vertices for all cracks
+  // Full screen width - same as horizon, waves, DNA
+  const crackLength = currentAnimationWidth;
+  const startX = -crackLength / 2;
   
-  let vertexIndex = 0;
+  // Seeded random for consistent pattern
+  const seededRandom = (seed) => {
+    const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
   
-  // ===========================================
-  // LAYER 1: MAIN HORIZONTAL LINE (clean, almost straight)
-  // ===========================================
+  // Random walk Y values - EVERY vertex has random offset from previous
+  let runningY = 0;
   
-  for (let i = 0; i < MAIN_LINE_VERTICES; i++) {
-    const t = i / (MAIN_LINE_VERTICES - 1); // 0 to 1
-    const x = t * width - width / 2;
+  for (let i = 0; i < VERTEX_COUNT; i++) {
+    const t = i / (VERTEX_COUNT - 1);
+    const x = startX + t * crackLength;
     
-    // VERY subtle variation (almost invisible)
-    const y = Math.sin(t * Math.PI * 2) * 0.005;
+    // Random walk: each vertex moves randomly from previous
+    // This guarantees NO straight segments
+    const step = (seededRandom(i * 17 + 42) - 0.5) * 0.025 * ANIMATION_HEIGHT;
+    runningY += step;
     
-    positions[vertexIndex * 3] = x;
-    positions[vertexIndex * 3 + 1] = y;
-    positions[vertexIndex * 3 + 2] = 0;
-    vertexIndex++;
-  }
-  
-  // ===========================================
-  // LAYER 2: CRACK BRANCHES (uniformly distributed)
-  // ===========================================
-  // Define specific crack zones spread EVENLY across the full width
-  // Format: { xPercent: position along width (0-1), angle: degrees, lengthFactor: relative size }
-  
-  const crackZones = [
-    // Left side cracks (0% - 33%)
-    { xPercent: 0.08, angle: 40, lengthFactor: 0.12 },   // far left, up
-    { xPercent: 0.18, angle: -35, lengthFactor: 0.10 },  // left, down
-    { xPercent: 0.28, angle: 45, lengthFactor: 0.11 },   // left-center, up
-    
-    // Center cracks (33% - 66%)
-    { xPercent: 0.40, angle: -40, lengthFactor: 0.12 },  // center-left, down
-    { xPercent: 0.52, angle: 35, lengthFactor: 0.10 },   // center, up
-    { xPercent: 0.62, angle: -45, lengthFactor: 0.11 },  // center-right, down
-    
-    // Right side cracks (66% - 100%)
-    { xPercent: 0.72, angle: 42, lengthFactor: 0.10 },   // right-center, up
-    { xPercent: 0.82, angle: -38, lengthFactor: 0.12 },  // right, down
-    { xPercent: 0.92, angle: 48, lengthFactor: 0.11 },   // far right, up
-  ];
-  
-  const NUM_CRACKS = crackZones.length;
-  const verticesPerCrack = Math.floor(CRACK_VERTICES / NUM_CRACKS);
-  
-  for (let crackNum = 0; crackNum < NUM_CRACKS; crackNum++) {
-    const zone = crackZones[crackNum];
-    
-    // Calculate origin position
-    const originX = zone.xPercent * width - width / 2;
-    const originY = 0;
-    
-    // Convert angle to radians
-    const angleRad = (zone.angle * Math.PI) / 180;
-    
-    // Crack length - SMALL! Only 10-12% of ANIMATION_HEIGHT
-    const crackLength = ANIMATION_HEIGHT * zone.lengthFactor;
-    
-    for (let i = 0; i < verticesPerCrack; i++) {
-      const t = i / (verticesPerCrack - 1); // 0 to 1 along crack
-      
-      // Straight line from origin
-      const x = originX + Math.cos(angleRad) * crackLength * t;
-      const y = originY + Math.sin(angleRad) * crackLength * t;
-      
-      positions[vertexIndex * 3] = x;
-      positions[vertexIndex * 3 + 1] = y;
-      positions[vertexIndex * 3 + 2] = 0;
-      vertexIndex++;
+    // Occasional bigger jump (10% chance) - creates crack deviations
+    if (seededRandom(i * 31 + 7) > 0.90) {
+      runningY += (seededRandom(i * 53) - 0.5) * 0.08 * ANIMATION_HEIGHT;
     }
-  }
-  
-  // Fill any remaining vertices along the main line
-  while (vertexIndex < VERTEX_COUNT) {
-    const t = vertexIndex / VERTEX_COUNT;
-    const x = t * width - width / 2;
-    positions[vertexIndex * 3] = x;
-    positions[vertexIndex * 3 + 1] = 0;
-    positions[vertexIndex * 3 + 2] = 0;
-    vertexIndex++;
+    
+    // Gently pull back toward center so it doesn't drift too far
+    runningY *= 0.97;
+    
+    // Keep compact
+    runningY = Math.max(-0.1 * ANIMATION_HEIGHT, Math.min(0.1 * ANIMATION_HEIGHT, runningY));
+    
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = runningY;
+    positions[i * 3 + 2] = 0;
   }
   
   return positions;
@@ -293,18 +233,24 @@ export function generateCrackPositions(time = 0) {
 /**
  * Generate vertex positions for the WAVE stage
  * 
- * Creates an oscillating waveform pattern like an audio visualizer.
- * The wave continuously animates based on the time parameter.
+ * Creates an ECG/HEART RATE MONITOR waveform pattern.
+ * Sharp spiky peaks with flat baselines, irregular heights.
  * 
- * IMPROVED WAVE PATTERN:
- * ======================
- * - Full viewport width coverage (edge to edge)
- * - 10-12 wave peaks visible (higher frequency)
- * - Smaller amplitude (more refined look)
- * - Complex waveform with multiple harmonics
+ * ECG WAVE PATTERN:
+ * =================
  * 
- * Visual representation:
- *  ∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
+ *           │╲              ╱╲              │╲
+ *           │ ╲    ╱╲      ╱  ╲     ╱╲      │ ╲
+ *   ────────┘  ╲──╱  ╲────╱    ╲───╱  ╲─────┘  ╲────
+ *               ╲╱    ╲  ╱              ╲╱
+ *                      ╲╱
+ * 
+ * Key features:
+ * - Sharp spiky peaks (like QRS complexes in ECG)
+ * - Flat baselines between spikes
+ * - IRREGULAR heights - tall, medium, short (random but consistent)
+ * - Both upward and downward spikes
+ * - Animates with time (scrolls/pulses)
  * 
  * @param {number} time - Current animation time (drives wave motion)
  * @returns {Float32Array} Array of vertex positions
@@ -313,39 +259,84 @@ export function generateWavePositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
   const width = currentAnimationWidth;
   
-  // Wave parameters - refined for more instances
-  const waveFrequency = 10; // Number of complete waves visible (was ~4)
-  const baseAmplitude = ANIMATION_HEIGHT * 0.18; // Smaller amplitude (was 0.35)
+  // Seeded random for consistent but irregular spike heights
+  const seededRandom = (seed) => {
+    const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  
+  // ECG parameters
+  const numSpikes = 14; // Number of spike groups across width
+  const spikeWidth = 0.035; // How wide each spike is (as fraction of width)
+  const baseAmplitude = ANIMATION_HEIGHT * 0.25;
+  
+  // Pre-generate spike data for consistency
+  const spikes = [];
+  for (let s = 0; s < numSpikes; s++) {
+    const xCenter = (s + 0.5) / numSpikes; // 0 to 1 position
+    const heightMultiplier = 0.3 + seededRandom(s * 7) * 0.7; // 0.3 to 1.0
+    const goesDown = seededRandom(s * 13) > 0.7; // 30% chance to go down
+    const hasPre = seededRandom(s * 19) > 0.5; // 50% chance for pre-spike
+    const hasPost = seededRandom(s * 23) > 0.4; // 60% chance for post-spike
+    
+    spikes.push({
+      xCenter,
+      height: heightMultiplier * (goesDown ? -1 : 1),
+      hasPre,
+      hasPost,
+      preHeight: seededRandom(s * 31) * 0.3 * (goesDown ? 1 : -1),
+      postHeight: seededRandom(s * 37) * 0.25 * (goesDown ? 1 : -1)
+    });
+  }
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
-    // Full width coverage from left edge to right edge
     const t = i / (VERTEX_COUNT - 1); // 0 to 1
     const x = t * width - width / 2;
     
-    // Multiple wave frequencies for complex waveform (audio visualizer look)
-    // Primary wave (dominant)
-    const wave1 = Math.sin(t * Math.PI * 2 * waveFrequency + time * 2.5) * 0.6;
+    // Add time-based scroll effect
+    const scrolledT = (t + time * 0.05) % 1;
     
-    // Secondary wave (faster, adds detail)
-    const wave2 = Math.sin(t * Math.PI * 2 * waveFrequency * 2 + time * 3.5) * 0.25;
+    // Start with flat baseline
+    let y = 0;
     
-    // Tertiary wave (even faster, subtle harmonics)
-    const wave3 = Math.sin(t * Math.PI * 2 * waveFrequency * 3 + time * 4.5) * 0.1;
+    // Check each spike to see if we're in its range
+    for (const spike of spikes) {
+      const dist = Math.abs(scrolledT - spike.xCenter);
+      
+      // Main spike (sharp peak)
+      if (dist < spikeWidth) {
+        const spikeT = 1 - (dist / spikeWidth); // 1 at center, 0 at edge
+        // Sharp triangular spike shape
+        const spikeShape = Math.pow(spikeT, 1.5);
+        y += spikeShape * spike.height * baseAmplitude;
+      }
+      
+      // Pre-spike (small blip before main spike)
+      if (spike.hasPre) {
+        const preDist = Math.abs(scrolledT - (spike.xCenter - spikeWidth * 1.8));
+        if (preDist < spikeWidth * 0.5) {
+          const preT = 1 - (preDist / (spikeWidth * 0.5));
+          y += Math.pow(preT, 2) * spike.preHeight * baseAmplitude;
+        }
+      }
+      
+      // Post-spike (small recovery wave after main spike)
+      if (spike.hasPost) {
+        const postDist = Math.abs(scrolledT - (spike.xCenter + spikeWidth * 1.5));
+        if (postDist < spikeWidth * 0.7) {
+          const postT = 1 - (postDist / (spikeWidth * 0.7));
+          y += Math.pow(postT, 2) * spike.postHeight * baseAmplitude;
+        }
+      }
+    }
     
-    // Quaternary wave (highest frequency, micro-detail)
-    const wave4 = Math.sin(t * Math.PI * 2 * waveFrequency * 5 + time * 5) * 0.05;
-    
-    // Combine waves with envelope (smoother at edges, but less aggressive falloff)
-    const envelope = 0.3 + 0.7 * Math.sin(t * Math.PI); // Never goes below 0.3
-    
-    const y = (wave1 + wave2 + wave3 + wave4) * envelope * baseAmplitude;
-    
-    // Z creates subtle depth variation - follows wave pattern
-    const z = Math.sin(t * Math.PI * waveFrequency + time * 1.5) * 0.15;
+    // Add subtle baseline noise
+    const noise = Math.sin(t * 50 + time * 3) * 0.005 * ANIMATION_HEIGHT;
+    y += noise;
     
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
-    positions[i * 3 + 2] = z;
+    positions[i * 3 + 2] = 0;
   }
   
   return positions;
@@ -590,11 +581,26 @@ export function interpolatePositions(from, to, progress, staggered = true) {
  * It determines which stage(s) are active and interpolates
  * the vertex positions accordingly.
  * 
- * Scroll Progress Mapping:
- * - 0.00 - 0.25: Horizon stage (100% horizon)
- * - 0.25 - 0.50: Horizon → Cracks transition
- * - 0.50 - 0.75: Cracks → Waves transition
- * - 0.75 - 1.00: Waves → DNA Helix transition
+ * Scroll Progress Mapping (EQUAL 25% per stage):
+ * ===============================================
+ * 
+ * Stage 1 - HORIZON:  0.00 - 0.25 (25%)
+ *   - 0.00 - 0.15: Pure horizon
+ *   - 0.15 - 0.25: VISIBLE transition to cracks
+ * 
+ * Stage 2 - CRACKS:   0.25 - 0.50 (25%)
+ *   - 0.25 - 0.40: Pure cracks
+ *   - 0.40 - 0.50: VISIBLE transition to waves
+ * 
+ * Stage 3 - WAVES:    0.50 - 0.75 (25%)
+ *   - 0.50 - 0.65: Pure waves
+ *   - 0.65 - 0.75: VISIBLE transition to DNA
+ * 
+ * Stage 4 - DNA:      0.75 - 1.00 (25%)
+ *   - 0.75 - 1.00: Pure DNA (no transition needed)
+ * 
+ * Each transition is 10% of total scroll (40% of each stage) - 
+ * long enough to clearly see the morphing effect.
  * 
  * @param {number} scrollProgress - Current scroll position (0-1)
  * @param {number} time - Current animation time for animated stages
@@ -604,38 +610,65 @@ export function generateVertexPositions(scrollProgress, time = 0) {
   // Clamp scroll progress to valid range
   const progress = Math.max(0, Math.min(1, scrollProgress));
   
-  // Define stage boundaries
-  const STAGE_1_END = 0.25;   // Horizon ends
-  const STAGE_2_END = 0.50;   // Cracks ends
-  const STAGE_3_END = 0.75;   // Waves ends
-  // Stage 4 (DNA) ends at 1.0
+  // Stage boundaries (each stage is exactly 25%)
+  const HORIZON_END = 0.25;
+  const CRACKS_END = 0.50;
+  const WAVES_END = 0.75;
   
-  // Stage 1: Pure Horizon (0 - 0.25)
-  if (progress <= STAGE_1_END) {
-    return generateHorizonPositions(time);
+  // Transition zones - 10% of total scroll each (40% of each stage)
+  // This makes the morphing effect CLEARLY VISIBLE
+  const TRANSITION_SIZE = 0.10;
+  const HORIZON_TRANS_START = HORIZON_END - TRANSITION_SIZE;  // 0.15
+  const CRACKS_TRANS_START = CRACKS_END - TRANSITION_SIZE;    // 0.40
+  const WAVES_TRANS_START = WAVES_END - TRANSITION_SIZE;      // 0.65
+  
+  // ===== STAGE 1: HORIZON (0.00 - 0.25) =====
+  if (progress < HORIZON_END) {
+    if (progress < HORIZON_TRANS_START) {
+      // Pure horizon
+      return generateHorizonPositions(time);
+    }
+    // Transition: Horizon → Cracks (VISIBLE morphing)
+    const t = (progress - HORIZON_TRANS_START) / TRANSITION_SIZE;
+    return interpolatePositions(
+      generateHorizonPositions(time),
+      generateCrackPositions(time),
+      t
+    );
   }
   
-  // Stage 2: Horizon → Cracks transition (0.25 - 0.50)
-  if (progress <= STAGE_2_END) {
-    const transitionProgress = (progress - STAGE_1_END) / (STAGE_2_END - STAGE_1_END);
-    const horizonPos = generateHorizonPositions(time);
-    const crackPos = generateCrackPositions(time);
-    return interpolatePositions(horizonPos, crackPos, transitionProgress);
+  // ===== STAGE 2: CRACKS (0.25 - 0.50) =====
+  if (progress < CRACKS_END) {
+    if (progress < CRACKS_TRANS_START) {
+      // Pure cracks
+      return generateCrackPositions(time);
+    }
+    // Transition: Cracks → Waves (VISIBLE morphing)
+    const t = (progress - CRACKS_TRANS_START) / TRANSITION_SIZE;
+    return interpolatePositions(
+      generateCrackPositions(time),
+      generateWavePositions(time),
+      t
+    );
   }
   
-  // Stage 3: Cracks → Waves transition (0.50 - 0.75)
-  if (progress <= STAGE_3_END) {
-    const transitionProgress = (progress - STAGE_2_END) / (STAGE_3_END - STAGE_2_END);
-    const crackPos = generateCrackPositions(time);
-    const wavePos = generateWavePositions(time);
-    return interpolatePositions(crackPos, wavePos, transitionProgress);
+  // ===== STAGE 3: WAVES (0.50 - 0.75) =====
+  if (progress < WAVES_END) {
+    if (progress < WAVES_TRANS_START) {
+      // Pure waves
+      return generateWavePositions(time);
+    }
+    // Transition: Waves → DNA (VISIBLE morphing)
+    const t = (progress - WAVES_TRANS_START) / TRANSITION_SIZE;
+    return interpolatePositions(
+      generateWavePositions(time),
+      generateDNAHelixPositions(time),
+      t
+    );
   }
   
-  // Stage 4: Waves → DNA Helix transition (0.75 - 1.00)
-  const transitionProgress = (progress - STAGE_3_END) / (1.0 - STAGE_3_END);
-  const wavePos = generateWavePositions(time);
-  const dnaPos = generateDNAHelixPositions(time);
-  return interpolatePositions(wavePos, dnaPos, transitionProgress);
+  // ===== STAGE 4: DNA HELIX (0.75 - 1.00) =====
+  return generateDNAHelixPositions(time);
 }
 
 /**
@@ -646,9 +679,9 @@ export function generateVertexPositions(scrollProgress, time = 0) {
  * @returns {string} Current stage name
  */
 export function getStageName(scrollProgress) {
-  if (scrollProgress <= 0.25) return 'Horizon';
-  if (scrollProgress <= 0.50) return 'Cracks';
-  if (scrollProgress <= 0.75) return 'Waves';
+  if (scrollProgress < 0.25) return 'Horizon';
+  if (scrollProgress < 0.50) return 'Cracks';
+  if (scrollProgress < 0.75) return 'Waves';
   return 'DNA Helix';
 }
 
