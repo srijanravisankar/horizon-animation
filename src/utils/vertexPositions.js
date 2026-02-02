@@ -379,9 +379,17 @@ export function generateDNAHelixPositions(time = 0) {
   const helixRadius = 0.45; // Vertical amplitude of helix
   const rotationSpeed = 1.2; // Rotation speed
   
+  // Per-strand slant parameters
+  const strand1Slant = 0.5; // Strand 1 slants upward to right
+  const strand2Slant = 0.2; // Strand 2 slants less (creates separation)
+  
   for (let i = 0; i < VERTEX_COUNT; i++) {
     // Progress along the helix (0 to 1)
     const t = i / (VERTEX_COUNT - 1);
+    
+    // Determine which strand (even = strand 1, odd = strand 2)
+    const isStrand1 = (i % 2 === 0);
+    const slantAmount = isStrand1 ? strand1Slant : strand2Slant;
     
     // X position spans the full width
     const x = t * width - width / 2;
@@ -390,11 +398,11 @@ export function generateDNAHelixPositions(time = 0) {
     const angle = t * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
     
     // Alternate between the two strands of the helix
-    // Even vertices on strand 1, odd vertices on strand 2
-    const strandOffset = (i % 2 === 0) ? 0 : Math.PI;
+    const strandOffset = isStrand1 ? 0 : Math.PI;
     
-    // Y position follows sine wave (creates up/down oscillation)
-    const y = Math.sin(angle + strandOffset) * helixRadius;
+    // Y position: slant + sine wave oscillation
+    const slantY = (t - 0.5) * slantAmount;
+    const y = slantY + Math.sin(angle + strandOffset) * helixRadius;
     
     // Z position follows cosine wave (creates depth, the 3D effect)
     const z = Math.cos(angle + strandOffset) * helixRadius * 0.4;
@@ -405,6 +413,123 @@ export function generateDNAHelixPositions(time = 0) {
   }
   
   return positions;
+}
+
+/**
+ * DNA STRAND VERTEX COUNT
+ * Used for separate strand geometries
+ */
+export const DNA_STRAND_VERTEX_COUNT = 100;
+
+/**
+ * Generate SEPARATE Strand 1 positions for DNA overlay
+ * 
+ * Creates an independent geometry for Strand 1 with its own slant.
+ * Used as an overlay during the DNA stage for enhanced visuals.
+ * 
+ * @param {number} time - Current animation time
+ * @returns {Float32Array} Strand 1 vertex positions
+ */
+export function generateDNAStrand1Positions(time = 0) {
+  const positions = new Float32Array(DNA_STRAND_VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
+  
+  const rotationsVisible = 8;
+  const helixRadius = 0.45;
+  const rotationSpeed = 1.2;
+  const slantAmount = 0.6; // Strand 1: more aggressive upward slant
+  
+  for (let i = 0; i < DNA_STRAND_VERTEX_COUNT; i++) {
+    const t = i / (DNA_STRAND_VERTEX_COUNT - 1);
+    const x = t * width - width / 2;
+    const angle = t * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
+    
+    // Strand 1: no phase offset
+    const slantY = (t - 0.5) * slantAmount;
+    const y = slantY + Math.sin(angle) * helixRadius;
+    const z = Math.cos(angle) * helixRadius * 0.4;
+    
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+  }
+  
+  return positions;
+}
+
+/**
+ * Generate SEPARATE Strand 2 positions for DNA overlay
+ * 
+ * Creates an independent geometry for Strand 2 with its own slant.
+ * Slants differently than Strand 1 for visual separation.
+ * 
+ * @param {number} time - Current animation time
+ * @returns {Float32Array} Strand 2 vertex positions
+ */
+export function generateDNAStrand2Positions(time = 0) {
+  const positions = new Float32Array(DNA_STRAND_VERTEX_COUNT * 3);
+  const width = currentAnimationWidth;
+  
+  const rotationsVisible = 8;
+  const helixRadius = 0.45;
+  const rotationSpeed = 1.2;
+  const slantAmount = 0.25; // Strand 2: less slant (creates divergence)
+  
+  for (let i = 0; i < DNA_STRAND_VERTEX_COUNT; i++) {
+    const t = i / (DNA_STRAND_VERTEX_COUNT - 1);
+    const x = t * width - width / 2;
+    const angle = t * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
+    
+    // Strand 2: π phase offset (opposite side of helix)
+    const slantY = (t - 0.5) * slantAmount;
+    const y = slantY + Math.sin(angle + Math.PI) * helixRadius;
+    const z = Math.cos(angle + Math.PI) * helixRadius * 0.4;
+    
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+  }
+  
+  return positions;
+}
+
+/**
+ * Get DNA strand endpoint positions for blob rendering
+ * 
+ * Returns the final vertex position of each strand.
+ * Used to position blob spheres at strand endpoints.
+ * 
+ * @param {number} time - Current animation time
+ * @returns {Object} { strand1: {x,y,z}, strand2: {x,y,z} }
+ */
+export function getDNAStrandEndpoints(time = 0) {
+  const width = currentAnimationWidth;
+  const rotationsVisible = 8;
+  const helixRadius = 0.45;
+  const rotationSpeed = 1.2;
+  
+  // Strand 1 endpoint (t = 1.0)
+  const t1 = 1.0;
+  const x1 = t1 * width - width / 2;
+  const angle1 = t1 * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
+  const slant1 = 0.6;
+  const slantY1 = (t1 - 0.5) * slant1;
+  const y1 = slantY1 + Math.sin(angle1) * helixRadius;
+  const z1 = Math.cos(angle1) * helixRadius * 0.4;
+  
+  // Strand 2 endpoint (t = 1.0)
+  const t2 = 1.0;
+  const x2 = t2 * width - width / 2;
+  const angle2 = t2 * Math.PI * 2 * rotationsVisible + time * rotationSpeed;
+  const slant2 = 0.25;
+  const slantY2 = (t2 - 0.5) * slant2;
+  const y2 = slantY2 + Math.sin(angle2 + Math.PI) * helixRadius;
+  const z2 = Math.cos(angle2 + Math.PI) * helixRadius * 0.4;
+  
+  return {
+    strand1: { x: x1, y: y1, z: z1 },
+    strand2: { x: x2, y: y2, z: z2 }
+  };
 }
 
 /**

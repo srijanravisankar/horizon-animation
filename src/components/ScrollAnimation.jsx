@@ -44,7 +44,11 @@ import {
   getStageName, 
   VERTEX_COUNT,
   calculateVisibleWidth,
-  setAnimationWidth 
+  setAnimationWidth,
+  generateDNAStrand1Positions,
+  generateDNAStrand2Positions,
+  getDNAStrandEndpoints,
+  DNA_STRAND_VERTEX_COUNT
 } from '../utils/vertexPositions';
 
 /**
@@ -156,6 +160,14 @@ function AnimatedLine({ scrollProgress, debug = false }) {
   const innerGlowGeometryRef = useRef();
   const outerGlowGeometryRef = useRef();
   
+  // Refs for DNA overlay strands (separate geometries for independent slanting)
+  const dnaStrand1Ref = useRef();
+  const dnaStrand2Ref = useRef();
+  
+  // Refs for DNA blob endpoints
+  const blob1Ref = useRef();
+  const blob2Ref = useRef();
+  
   // Track animation time for animated stages (waves, DNA)
   const timeRef = useRef(0);
   
@@ -248,6 +260,65 @@ function AnimatedLine({ scrollProgress, debug = false }) {
         colorAttribute.needsUpdate = true;
       }
     });
+    
+    // ===== DNA OVERLAY STRANDS (SEPARATE GEOMETRIES) =====
+    // Only visible during DNA stage (scrollProgress >= 0.75)
+    const isDNAStage = scrollProgress.current >= 0.75;
+    const dnaOpacity = isDNAStage ? Math.min(1, (scrollProgress.current - 0.75) / 0.15) : 0;
+    
+    // Update Strand 1 overlay
+    if (dnaStrand1Ref.current) {
+      const strand1Positions = generateDNAStrand1Positions(timeRef.current);
+      const posAttr = dnaStrand1Ref.current.geometry.attributes.position;
+      for (let i = 0; i < strand1Positions.length; i++) {
+        posAttr.array[i] = strand1Positions[i];
+      }
+      posAttr.needsUpdate = true;
+      dnaStrand1Ref.current.material.opacity = dnaOpacity * 0.6;
+      dnaStrand1Ref.current.visible = isDNAStage;
+    }
+    
+    // Update Strand 2 overlay
+    if (dnaStrand2Ref.current) {
+      const strand2Positions = generateDNAStrand2Positions(timeRef.current);
+      const posAttr = dnaStrand2Ref.current.geometry.attributes.position;
+      for (let i = 0; i < strand2Positions.length; i++) {
+        posAttr.array[i] = strand2Positions[i];
+      }
+      posAttr.needsUpdate = true;
+      dnaStrand2Ref.current.material.opacity = dnaOpacity * 0.6;
+      dnaStrand2Ref.current.visible = isDNAStage;
+    }
+    
+    // ===== DNA BLOB ENDPOINTS =====
+    if (blob1Ref.current && blob2Ref.current) {
+      if (isDNAStage) {
+        const endpoints = getDNAStrandEndpoints(timeRef.current);
+        
+        // Position blob 1 at strand 1 endpoint
+        blob1Ref.current.position.set(
+          endpoints.strand1.x,
+          endpoints.strand1.y,
+          endpoints.strand1.z
+        );
+        
+        // Position blob 2 at strand 2 endpoint
+        blob2Ref.current.position.set(
+          endpoints.strand2.x,
+          endpoints.strand2.y,
+          endpoints.strand2.z
+        );
+        
+        // Fade in blobs
+        blob1Ref.current.material.opacity = dnaOpacity;
+        blob2Ref.current.material.opacity = dnaOpacity;
+        blob1Ref.current.visible = true;
+        blob2Ref.current.visible = true;
+      } else {
+        blob1Ref.current.visible = false;
+        blob2Ref.current.visible = false;
+      }
+    }
   });
   
   return (
@@ -357,6 +428,92 @@ function AnimatedLine({ scrollProgress, debug = false }) {
           toneMapped={false}
         />
       </line>
+      
+      {/* 
+        DNA OVERLAY STRAND 1 (SEPARATE GEOMETRY)
+        
+        Independent strand with its own slant amount.
+        Only visible during DNA stage, fades in smoothly.
+        Slants more aggressively upward to the right.
+      */}
+      <line ref={dnaStrand1Ref} visible={false} renderOrder={4}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={DNA_STRAND_VERTEX_COUNT}
+            array={new Float32Array(DNA_STRAND_VERTEX_COUNT * 3)}
+            itemSize={3}
+            usage={THREE.DynamicDrawUsage}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial
+          color="#00EEFF"
+          transparent={true}
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </line>
+      
+      {/* 
+        DNA OVERLAY STRAND 2 (SEPARATE GEOMETRY)
+        
+        Independent strand with different slant than Strand 1.
+        Creates visual separation between the two strands.
+      */}
+      <line ref={dnaStrand2Ref} visible={false} renderOrder={4}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={DNA_STRAND_VERTEX_COUNT}
+            array={new Float32Array(DNA_STRAND_VERTEX_COUNT * 3)}
+            itemSize={3}
+            usage={THREE.DynamicDrawUsage}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial
+          color="#00CCFF"
+          transparent={true}
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+          depthWrite={false}
+        />
+      </line>
+      
+      {/* 
+        DNA BLOB ENDPOINT 1
+        
+        Rounded sphere at the end of Strand 1.
+        Glows with same cyan color, fades in with DNA stage.
+      */}
+      <mesh ref={blob1Ref} visible={false} renderOrder={5}>
+        <sphereGeometry args={[0.15, 16, 16]} />
+        <meshBasicMaterial
+          color="#00FFFF"
+          transparent={true}
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
+      
+      {/* 
+        DNA BLOB ENDPOINT 2
+        
+        Rounded sphere at the end of Strand 2.
+      */}
+      <mesh ref={blob2Ref} visible={false} renderOrder={5}>
+        <sphereGeometry args={[0.15, 16, 16]} />
+        <meshBasicMaterial
+          color="#00FFFF"
+          transparent={true}
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
     </group>
   );
 }
