@@ -181,9 +181,11 @@ export function generateHorizonPositions(time = 0) {
  * KEY TECHNIQUE: Random walk algorithm - each vertex moves randomly from previous.
  * This guarantees NO straight segments anywhere.
  * 
+ * NOW WITH FLOWING ANIMATION - cracks pulse and flow dynamically from the start.
+ * 
  * Reference: Real wall crack - rough, jagged texture, no straight lines
  * 
- * @param {number} time - Current animation time (unused - static cracks)
+ * @param {number} time - Current animation time (drives flowing motion)
  * @returns {Float32Array} Array of vertex positions
  */
 export function generateCrackPositions(time = 0) {
@@ -201,6 +203,10 @@ export function generateCrackPositions(time = 0) {
   
   // Random walk Y values - EVERY vertex has random offset from previous
   let runningY = 0;
+  
+  // FLOWING ANIMATION: time-based wave that propagates along the crack
+  const flowSpeed = 0.6; // How fast the flow moves (slowed down)
+  const flowAmplitude = 0.015 * ANIMATION_HEIGHT; // How much the flow affects Y
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
     const t = i / (VERTEX_COUNT - 1);
@@ -222,8 +228,16 @@ export function generateCrackPositions(time = 0) {
     // Keep compact
     runningY = Math.max(-0.1 * ANIMATION_HEIGHT, Math.min(0.1 * ANIMATION_HEIGHT, runningY));
     
+    // DYNAMIC FLOW: Add time-based wave motion
+    // Multiple frequencies for organic, living crack feel
+    const flow1 = Math.sin((t * 8 + time * flowSpeed) * Math.PI * 2) * flowAmplitude;
+    const flow2 = Math.sin((t * 12 - time * flowSpeed * 0.7) * Math.PI * 2) * flowAmplitude * 0.6;
+    const flow3 = Math.sin((t * 20 + time * flowSpeed * 1.3) * Math.PI * 2) * flowAmplitude * 0.3;
+    
+    const dynamicY = runningY + flow1 + flow2 + flow3;
+    
     positions[i * 3] = x;
-    positions[i * 3 + 1] = runningY;
+    positions[i * 3 + 1] = dynamicY;
     positions[i * 3 + 2] = 0;
   }
   
@@ -233,24 +247,27 @@ export function generateCrackPositions(time = 0) {
 /**
  * Generate vertex positions for the WAVE stage
  * 
- * Creates an ECG/HEART RATE MONITOR waveform pattern.
- * Sharp spiky peaks with flat baselines, irregular heights.
+ * Creates an AUTHENTIC ECG/HEART RATE MONITOR waveform pattern.
+ * Based on real electrocardiogram with proper P-QRS-T wave structure.
  * 
- * ECG WAVE PATTERN:
- * =================
+ * REAL ECG WAVE PATTERN:
+ * ======================
  * 
- *           │╲              ╱╲              │╲
- *           │ ╲    ╱╲      ╱  ╲     ╱╲      │ ╲
- *   ────────┘  ╲──╱  ╲────╱    ╲───╱  ╲─────┘  ╲────
- *               ╲╱    ╲  ╱              ╲╱
- *                      ╲╱
+ *              ╱╲
+ *             ╱  ╲
+ *     ╭╮     ╱    ╲      ╭──╮
+ *   ──  ────╱      ╲────╱    ╲────────
+ *                   ╲  ╱
+ *                    ╲╱
+ * 
+ *   [P]    [Q] [R] [S]    [T]
  * 
  * Key features:
- * - Sharp spiky peaks (like QRS complexes in ECG)
- * - Flat baselines between spikes
- * - IRREGULAR heights - tall, medium, short (random but consistent)
- * - Both upward and downward spikes
- * - Animates with time (scrolls/pulses)
+ * - P wave: Small rounded bump (atrial depolarization)
+ * - QRS complex: Sharp spike up (R) with small dips before (Q) and after (S)
+ * - T wave: Gentle rounded recovery wave
+ * - Flat baseline between heartbeats
+ * - Scrolls smoothly with time
  * 
  * @param {number} time - Current animation time (drives wave motion)
  * @returns {Float32Array} Array of vertex positions
@@ -259,80 +276,94 @@ export function generateWavePositions(time = 0) {
   const positions = new Float32Array(VERTEX_COUNT * 3);
   const width = currentAnimationWidth;
   
-  // Seeded random for consistent but irregular spike heights
+  // Seeded random for consistent but varied wave heights
   const seededRandom = (seed) => {
     const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
     return x - Math.floor(x);
   };
   
-  // ECG parameters
-  const numSpikes = 14; // Number of spike groups across width
-  const spikeWidth = 0.035; // How wide each spike is (as fraction of width)
-  const baseAmplitude = ANIMATION_HEIGHT * 0.25;
+  // ECG parameters - TIGHTER spacing
+  const numHeartbeats = 7; // More heartbeats for tighter spacing
+  const cycleWidth = 1.0 / numHeartbeats; // Width of one heartbeat cycle (0-1)
+  const baseAmplitude = ANIMATION_HEIGHT * 0.35; // Base height of R peak
   
-  // Pre-generate spike data for consistency
-  const spikes = [];
-  for (let s = 0; s < numSpikes; s++) {
-    const xCenter = (s + 0.5) / numSpikes; // 0 to 1 position
-    const heightMultiplier = 0.3 + seededRandom(s * 7) * 0.7; // 0.3 to 1.0
-    const goesDown = seededRandom(s * 13) > 0.7; // 30% chance to go down
-    const hasPre = seededRandom(s * 19) > 0.5; // 50% chance for pre-spike
-    const hasPost = seededRandom(s * 23) > 0.4; // 60% chance for post-spike
-    
-    spikes.push({
-      xCenter,
-      height: heightMultiplier * (goesDown ? -1 : 1),
-      hasPre,
-      hasPost,
-      preHeight: seededRandom(s * 31) * 0.3 * (goesDown ? 1 : -1),
-      postHeight: seededRandom(s * 37) * 0.25 * (goesDown ? 1 : -1)
-    });
+  // Pre-generate random heights for each heartbeat (0.4 to 1.0 range)
+  const heartbeatHeights = [];
+  for (let h = 0; h < numHeartbeats + 2; h++) {
+    heartbeatHeights.push(0.4 + seededRandom(h * 7 + 13) * 0.6);
   }
+  
+  // Scroll speed - slow and steady
+  const scrollSpeed = 0.025;
   
   for (let i = 0; i < VERTEX_COUNT; i++) {
     const t = i / (VERTEX_COUNT - 1); // 0 to 1
     const x = t * width - width / 2;
     
     // Add time-based scroll effect
-    const scrolledT = (t + time * 0.05) % 1;
+    const scrolledT = (t + time * scrollSpeed) % 1;
+    
+    // Find which heartbeat cycle we're in and position within it
+    const cycleIndex = Math.floor(scrolledT / cycleWidth);
+    const cycleT = (scrolledT % cycleWidth) / cycleWidth; // 0 to 1 within cycle
+    
+    // Get random height multiplier for this heartbeat
+    const heightMultiplier = heartbeatHeights[cycleIndex % heartbeatHeights.length];
+    const effectiveAmplitude = baseAmplitude * heightMultiplier;
     
     // Start with flat baseline
     let y = 0;
     
-    // Check each spike to see if we're in its range
-    for (const spike of spikes) {
-      const dist = Math.abs(scrolledT - spike.xCenter);
-      
-      // Main spike (sharp peak)
-      if (dist < spikeWidth) {
-        const spikeT = 1 - (dist / spikeWidth); // 1 at center, 0 at edge
-        // Sharp triangular spike shape
-        const spikeShape = Math.pow(spikeT, 1.5);
-        y += spikeShape * spike.height * baseAmplitude;
-      }
-      
-      // Pre-spike (small blip before main spike)
-      if (spike.hasPre) {
-        const preDist = Math.abs(scrolledT - (spike.xCenter - spikeWidth * 1.8));
-        if (preDist < spikeWidth * 0.5) {
-          const preT = 1 - (preDist / (spikeWidth * 0.5));
-          y += Math.pow(preT, 2) * spike.preHeight * baseAmplitude;
-        }
-      }
-      
-      // Post-spike (small recovery wave after main spike)
-      if (spike.hasPost) {
-        const postDist = Math.abs(scrolledT - (spike.xCenter + spikeWidth * 1.5));
-        if (postDist < spikeWidth * 0.7) {
-          const postT = 1 - (postDist / (spikeWidth * 0.7));
-          y += Math.pow(postT, 2) * spike.postHeight * baseAmplitude;
-        }
-      }
+    // === P WAVE (small rounded bump) ===
+    // Position: 15-25% of cycle (moved later to tighten spacing)
+    const pCenter = 0.20;
+    const pWidth = 0.05;
+    const pDist = Math.abs(cycleT - pCenter);
+    if (pDist < pWidth) {
+      const pT = 1 - (pDist / pWidth);
+      // Smooth rounded shape using cosine
+      y += Math.pow(Math.cos((1 - pT) * Math.PI / 2), 2) * effectiveAmplitude * 0.08;
     }
     
-    // Add subtle baseline noise
-    const noise = Math.sin(t * 50 + time * 3) * 0.005 * ANIMATION_HEIGHT;
-    y += noise;
+    // === QRS COMPLEX (the main spike) ===
+    // Q wave: small dip before R (30-33% of cycle)
+    const qCenter = 0.32;
+    const qWidth = 0.015;
+    const qDist = Math.abs(cycleT - qCenter);
+    if (qDist < qWidth) {
+      const qT = 1 - (qDist / qWidth);
+      y -= Math.pow(qT, 1.5) * effectiveAmplitude * 0.12;
+    }
+    
+    // R wave: TALL SHARP spike up (33-40% of cycle)
+    const rCenter = 0.37;
+    const rWidth = 0.025;
+    const rDist = Math.abs(cycleT - rCenter);
+    if (rDist < rWidth) {
+      const rT = 1 - (rDist / rWidth);
+      // Very sharp triangular peak
+      y += Math.pow(rT, 1.2) * effectiveAmplitude;
+    }
+    
+    // S wave: sharp dip down after R (40-45% of cycle)
+    const sCenter = 0.43;
+    const sWidth = 0.02;
+    const sDist = Math.abs(cycleT - sCenter);
+    if (sDist < sWidth) {
+      const sT = 1 - (sDist / sWidth);
+      y -= Math.pow(sT, 1.5) * effectiveAmplitude * 0.25;
+    }
+    
+    // === T WAVE (rounded recovery bump) ===
+    // Position: 55-70% of cycle
+    const tCenter = 0.60;
+    const tWidth = 0.08;
+    const tDist = Math.abs(cycleT - tCenter);
+    if (tDist < tWidth) {
+      const tT = 1 - (tDist / tWidth);
+      // Smooth rounded shape
+      y += Math.pow(Math.cos((1 - tT) * Math.PI / 2), 2) * effectiveAmplitude * 0.15;
+    }
     
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
